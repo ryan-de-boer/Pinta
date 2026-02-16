@@ -18,6 +18,123 @@ internal sealed class SmoothBrush : BasePaintBrush
 		get { return 1.0; }
 	}
 
+//	protected unsafe void OnMouseMoveMask(ImageSurface maskSurface, PointD start, PointD end, double brushWidth, bool paintWhite)
+//{
+//    int rad = (int)(brushWidth / 2.0) + 1;
+
+//    RectangleI surfaceRect = new RectangleI(0, 0, maskSurface.Width, maskSurface.Height);
+//    RectangleI brushRect = new RectangleI((int)start.X - rad, (int)start.Y - rad, 2 * rad, 2 * rad);
+//    RectangleI destRect = RectangleI.Intersect(surfaceRect, brushRect);
+
+//    if (destRect.Width <= 0 || destRect.Height <= 0)
+//        return;
+
+//    // Color to paint: white = opaque, black = transparent
+//    byte fillValue = paintWhite ? (byte)255 : (byte)0;
+
+//    unsafe
+//    {
+//        Span<byte> data = maskSurface.GetData();
+//        int stride = maskSurface.Stride;
+
+//        fixed (byte* basePtr = data)
+//        {
+//            for (int iy = destRect.Top; iy < destRect.Bottom; iy++)
+//            {
+//                byte* rowPtr = basePtr + iy * stride;
+//                for (int ix = destRect.Left; ix < destRect.Right; ix++)
+//                {
+//                    // Simple circular brush falloff
+//                    double dx = ix - start.X;
+//                    double dy = iy - start.Y;
+//                    double dist = Math.Sqrt(dx * dx + dy * dy);
+//                    if (dist <= rad)
+//                    {
+//                        rowPtr[ix] = fillValue;
+//                    }
+//                }
+//            }
+//        }
+
+//        maskSurface.MarkDirty();
+//    }
+//}
+
+	protected unsafe void OnMouseMoveMask(
+    ImageSurface maskSurface,
+    PointD start,
+    PointD end,
+    double brushWidth,
+    bool paintWhite) // true = opaque, false = transparent
+{
+    int rad = (int)(brushWidth / 2.0) + 1;
+
+    // Fill value for the mask: white = 255 (opaque), black = 0 (transparent)
+    byte fillValue = paintWhite ? (byte)255 : (byte)0;
+
+    // Number of steps along the line
+    int steps = (int)start.Distance(end) / rad + 1;
+
+    // Initialize LUT if needed
+    if (lut_factor == null)
+    {
+        lut_factor = new byte[LUT_Resolution + 1, LUT_Resolution + 1];
+        for (int dy = 0; dy <= LUT_Resolution; dy++)
+        {
+            for (int dx = 0; dx <= LUT_Resolution; dx++)
+            {
+                double d = Math.Sqrt(dx * dx + dy * dy) / LUT_Resolution;
+                if (d > 1.0)
+                    lut_factor[dx, dy] = 0;
+                else
+                    lut_factor[dx, dy] = (byte)(Math.Cos(Math.Sqrt(d) * Math.PI / 2.0) * 255);
+            }
+        }
+    }
+
+    Span<byte> data = maskSurface.GetData();
+    int stride = maskSurface.Stride;
+
+    fixed (byte* basePtr = data)
+    {
+        for (int step = 0; step <= steps; step++)
+        {
+            // Interpolate point along the line
+            double t = step / (double)steps;
+            double px = start.X + t * (end.X - start.X);
+            double py = start.Y + t * (end.Y - start.Y);
+
+            // Rectangle of influence
+            int left = Math.Max((int)(px - rad), 0);
+            int top = Math.Max((int)(py - rad), 0);
+            int right = Math.Min((int)(px + rad), maskSurface.Width - 1);
+            int bottom = Math.Min((int)(py + rad), maskSurface.Height - 1);
+
+            for (int iy = top; iy <= bottom; iy++)
+            {
+                byte* rowPtr = basePtr + iy * stride;
+                int dy = Math.Abs((int)(iy - py) * LUT_Resolution / rad);
+                if (dy > LUT_Resolution) dy = LUT_Resolution;
+
+                for (int ix = left; ix <= right; ix++)
+                {
+                    int dx = Math.Abs((int)(ix - px) * LUT_Resolution / rad);
+                    if (dx > LUT_Resolution) dx = LUT_Resolution;
+
+                    byte force = lut_factor[dx, dy];
+
+                    // Blend toward fillValue using LUT
+                    rowPtr[ix] = (byte)((rowPtr[ix] * (255 - force) + fillValue * force) / 255);
+                }
+            }
+        }
+    }
+
+    maskSurface.MarkDirty();
+}
+
+
+
 	protected override unsafe RectangleI OnMouseMove (Context g,
 	ImageSurface surface,
 	BrushStrokeArgs strokeArgs)
@@ -27,6 +144,15 @@ internal sealed class SmoothBrush : BasePaintBrush
 		int stroke_r = (int) (255.0 * strokeArgs.StrokeColor.R);
 		int stroke_g = (int) (255.0 * strokeArgs.StrokeColor.G);
 		int stroke_b = (int) (255.0 * strokeArgs.StrokeColor.B);
+
+		if (strokeArgs.WriteToMask) {
+			bool useWhite = stroke_r==255;
+			PointD lp = new PointD(strokeArgs.LastPosition.X, strokeArgs.LastPosition.Y);
+			PointD cp = new PointD(strokeArgs.CurrentPosition.X, strokeArgs.CurrentPosition.Y);
+			OnMouseMoveMask(strokeArgs.g_document.Layers.CurrentUserLayer.MaskSurface, lp, cp, g.LineWidth, useWhite);
+			return RectangleI.Zero;
+		}
+
 
 		RectangleI surface_rect = new RectangleI (0, 0, surface.Width, surface.Height);
 		RectangleI brush_rect = new RectangleI (strokeArgs.CurrentPosition.X - rad, strokeArgs.CurrentPosition.Y - rad, 2 * rad, 2 * rad);

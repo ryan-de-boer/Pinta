@@ -24,9 +24,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection.Metadata;
+using System.Xml.Linq;
 using Cairo;
 using GObject;
 using Pinta.Core;
+using Document=Pinta.Core.Document;
 
 namespace Pinta.Gui.Widgets;
 
@@ -130,6 +133,9 @@ public sealed class LayersListViewItemWidget : Gtk.Box
 	private readonly Gtk.Label item_label;
 	private readonly Gtk.CheckButton visible_button;
 
+	private Gtk.Button m_maskButton;
+	UserLayer m_layer;
+
 	public LayersListViewItemWidget ()
 	{
 		Gtk.DrawingArea itemThumbnail = Gtk.DrawingArea.New ();
@@ -137,10 +143,40 @@ public sealed class LayersListViewItemWidget : Gtk.Box
 		itemThumbnail.WidthRequest = 60;
 		itemThumbnail.HeightRequest = 40;
 
+		// Create a click gesture controller
+var clickGesture = new Gtk.GestureClick();
+clickGesture.Button = 0; // 0 = any button
+		clickGesture.OnPressed += ClickGesture_OnPressed;
+// Attach the gesture to the DrawingArea
+itemThumbnail.AddController(clickGesture);
+
+
 		Gtk.Label itemLabel = Gtk.Label.New (string.Empty);
 		itemLabel.Halign = Gtk.Align.Start;
 		itemLabel.Hexpand = true;
 		itemLabel.Ellipsize = Pango.EllipsizeMode.End;
+
+		m_maskButton = new Gtk.Button();
+		m_maskButton.Child = Gtk.Label.New("mask");
+		m_maskButton.Halign = Gtk.Align.Start;
+		m_maskButton.AddCssClass("flat"); // removes button styling
+
+		m_maskButton.OnClicked += (s, e) =>
+		{
+			PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer.ShowMask = true;
+			PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer.OnChanged();
+var dialog = new Gtk.AlertDialog();
+dialog.Message = "Message_"+m_layer.Name;
+var root = this.Root as Gtk.Window;
+//dialog.Show(root);
+
+		};
+
+		m_layer = PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer;
+//		m_layer.MaskChanged += (s, e) => UpdateMaskIcon();
+		m_layer.MaskChanged += M_layer_MaskChanged;
+
+		UpdateMaskIcon();
 
 		Gtk.CheckButton visibleButton = Gtk.CheckButton.New ();
 		visibleButton.Halign = Gtk.Align.End;
@@ -163,6 +199,7 @@ public sealed class LayersListViewItemWidget : Gtk.Box
 		SetOrientation (Gtk.Orientation.Horizontal);
 
 		Append (itemThumbnail);
+		Append (m_maskButton);
 		Append (itemLabel);
 		Append (visibleButton);
 
@@ -172,6 +209,38 @@ public sealed class LayersListViewItemWidget : Gtk.Box
 		item_label = itemLabel;
 		visible_button = visibleButton;
 	}
+
+	private void ClickGesture_OnPressed (Gtk.GestureClick sender, Gtk.GestureClick.PressedSignalArgs args)
+	{
+//		m_layer.ShowMask = false;
+					PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer.ShowMask = false;
+			PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer.OnChanged();
+
+	}
+
+	private void M_layer_MaskChanged (object? sender, EventArgs e)
+	{
+		    if (sender != m_layer)
+        return;
+
+//		var layer = PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer;
+//	m_layer = PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer;
+//    m_maskButton.Visible = m_layer.HasMask;
+m_maskButton.Visible =((UserLayer)sender).HasMask;
+
+		var dialog = new Gtk.AlertDialog();
+dialog.Message = "Mask_"+((UserLayer)sender).Name;
+var root = this.Root as Gtk.Window;
+//dialog.Show(root);
+
+	}
+
+	private void UpdateMaskIcon()
+{
+////		var layer = PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer;
+	m_layer = PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer;
+    m_maskButton.Visible = m_layer.HasMask;
+}
 
 	private void MenuGesture_OnPressed (
 		Gtk.GestureClick _,
@@ -192,6 +261,7 @@ public sealed class LayersListViewItemWidget : Gtk.Box
 		operationsSection.AppendItem (actions.DeleteLayer.CreateMenuItem ());
 		operationsSection.AppendItem (actions.DuplicateLayer.CreateMenuItem ());
 		operationsSection.AppendItem (actions.MergeLayerDown.CreateMenuItem ());
+		operationsSection.AppendItem (actions.AddTransparencyMask.CreateMenuItem ());
 
 		Gio.Menu flipSection = Gio.Menu.New ();
 		flipSection.AppendItem (actions.FlipHorizontal.CreateMenuItem ());
@@ -214,15 +284,54 @@ public sealed class LayersListViewItemWidget : Gtk.Box
 	/// <summary>
 	/// Bind the widget to a different LayersListViewItem.
 	/// </summary>
-	public void SetItem (LayersListViewItem newItem)
-	{
-		if (item != null)
-			item.LayerModified -= OnLayerModified;
+public void SetItemOLD (LayersListViewItem newItem)
+{
+    // Detach old handlers
+    if (item != null)
+        item.LayerModified -= OnLayerModified;
 
-		item = newItem;
-		item.LayerModified += OnLayerModified;
-		UpdateFromLayer ();
-	}
+
+    // Assign new references
+    item = newItem;
+    m_layer = newItem.UserLayer;
+
+    // Attach new handlers
+    item.LayerModified += OnLayerModified;
+
+    UpdateFromLayer ();
+}
+
+	public void SetItem(LayersListViewItem newItem)
+{
+    // Unsubscribe from old layer
+    if (m_layer != null)
+        m_layer.MaskChanged -= M_layer_MaskChanged;
+
+    if (item != null)
+        item.LayerModified -= OnLayerModified;
+
+    // Assign new item + layer
+    item = newItem;
+    m_layer = newItem.UserLayer;
+
+    // Subscribe to new layer
+    m_layer.MaskChanged += M_layer_MaskChanged;
+    item.LayerModified += OnLayerModified;
+
+    UpdateFromLayer();
+}
+
+	public void Unbind()
+{
+    if (m_layer != null)
+        m_layer.MaskChanged -= M_layer_MaskChanged;
+
+    if (item != null)
+        item.LayerModified -= OnLayerModified;
+
+    m_layer = null;
+    item = null;
+}
 
 	/// <summary>
 	/// Event handler for modifications to the item's layer.

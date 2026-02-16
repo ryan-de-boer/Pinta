@@ -119,12 +119,28 @@ public sealed class EraserTool : BaseBrushTool
 				break;
 
 			case EraserType.Smooth:
+				if (document.Layers.CurrentUserLayer.ShowMask && document.Layers.CurrentUserLayer.HasMaskS) {
+					var mask = document.Layers.CurrentUserLayer.MaskSurface;
+					using (var mg = new Context (mask)) {
+						EraseSmoothMaskDraw(mask, mg, lastPointD, newPointD);
+					}
 
-				EraseSmooth (
-					document.Layers.CurrentUserLayer.Surface,
-					g,
-					lastPointD,
-					newPointD);
+				}
+				else if (!document.Layers.CurrentUserLayer.ShowMask && document.Layers.CurrentUserLayer.HasMaskS) {
+					var mask = document.Layers.CurrentUserLayer.MaskSurface;
+					using (var mg = new Context (mask)) {
+						EraseSmoothMask (mask, mg, lastPointD, newPointD);
+					}
+
+				} else {
+					EraseSmooth (
+						document.Layers.CurrentUserLayer.Surface,
+						g,
+						lastPointD,
+						newPointD);
+
+				}
+
 
 				break;
 		}
@@ -315,6 +331,112 @@ public sealed class EraserTool : BaseBrushTool
 			PasteSurfacePart (g, temporarySurface, destinationBounds);
 		}
 	}
+
+public void EraseSmoothMask(ImageSurface mask, Context g, PointD start, PointD end)
+{
+    int rad = (int)(BrushWidth / 2.0) + 1;
+
+    int numberOfSteps = (int)start.Distance(end) / rad + 1;
+
+    // Lookup table for smooth brush
+    byte[,] lut_factor = lazy_lut_factor.Value;
+
+    for (var step = 0; step < numberOfSteps; step++)
+    {
+        PointD pt = Utility.Lerp(start, end, (float)step / numberOfSteps);
+
+        int x = (int)pt.X;
+        int y = (int)pt.Y;
+
+        RectangleI maskBounds = new(0, 0, mask.Width, mask.Height);
+        RectangleI brushBounds = new(x - rad, y - rad, 2 * rad, 2 * rad);
+        RectangleI destinationBounds = RectangleI.Intersect(maskBounds, brushBounds);
+
+        if (destinationBounds.Width <= 0 || destinationBounds.Height <= 0)
+            continue;
+
+        // Copy the relevant part of the mask
+        ImageSurface temp = CopySurfacePart(mask, destinationBounds);
+        Span<ColorBgra> data = temp.GetPixelData();
+
+        for (int iy = destinationBounds.Top; iy < destinationBounds.Bottom; iy++)
+        {
+            int dy = Math.Abs((iy - y) * LUT_Resolution / rad);
+            var row = data[(temp.Width * (iy - destinationBounds.Top))..];
+
+            for (int ix = destinationBounds.Left; ix < destinationBounds.Right; ix++)
+            {
+                int dx = Math.Abs((ix - x) * LUT_Resolution / rad);
+                byte force = lut_factor[dy, dx];
+
+                int idx = ix - destinationBounds.Left;
+
+                // Reduce alpha according to brush strength
+                byte originalAlpha = row[idx].A;
+                byte newAlpha = (byte)(originalAlpha * force / 255);
+                row[idx] = ColorBgra.FromBgra(0, 0, 0, newAlpha);
+            }
+        }
+
+        // Paste back the erased area into the mask
+        PasteSurfacePart(g, temp, destinationBounds);
+    }
+
+    mask.MarkDirty();
+}
+
+	public void EraseSmoothMaskDraw(ImageSurface mask, Context g, PointD start, PointD end)
+{
+    int rad = (int)(BrushWidth / 2.0) + 1;
+
+    int numberOfSteps = (int)start.Distance(end) / rad + 1;
+
+    // Lookup table for smooth brush
+    byte[,] lut_factor = lazy_lut_factor.Value;
+
+    for (var step = 0; step < numberOfSteps; step++)
+    {
+        PointD pt = Utility.Lerp(start, end, (float)step / numberOfSteps);
+
+        int x = (int)pt.X;
+        int y = (int)pt.Y;
+
+        RectangleI maskBounds = new(0, 0, mask.Width, mask.Height);
+        RectangleI brushBounds = new(x - rad, y - rad, 2 * rad, 2 * rad);
+        RectangleI destinationBounds = RectangleI.Intersect(maskBounds, brushBounds);
+
+        if (destinationBounds.Width <= 0 || destinationBounds.Height <= 0)
+            continue;
+
+        // Copy the relevant part of the mask
+        ImageSurface temp = CopySurfacePart(mask, destinationBounds);
+        Span<ColorBgra> data = temp.GetPixelData();
+
+        for (int iy = destinationBounds.Top; iy < destinationBounds.Bottom; iy++)
+        {
+            int dy = Math.Abs((iy - y) * LUT_Resolution / rad);
+            var row = data[(temp.Width * (iy - destinationBounds.Top))..];
+
+            for (int ix = destinationBounds.Left; ix < destinationBounds.Right; ix++)
+            {
+                int dx = Math.Abs((ix - x) * LUT_Resolution / rad);
+                byte force = lut_factor[dy, dx];
+
+                int idx = ix - destinationBounds.Left;
+
+                // Reduce alpha according to brush strength
+                byte originalAlpha = row[idx].A;
+                byte newAlpha = (byte)(originalAlpha * force / 255);
+                row[idx] = ColorBgra.FromBgra(255, 255, 255, newAlpha);
+            }
+        }
+
+        // Paste back the erased area into the mask
+        PasteSurfacePart(g, temp, destinationBounds);
+    }
+
+    mask.MarkDirty();
+}
 
 	private Label? type_label;
 	private ToolBarComboBox? type_combobox;

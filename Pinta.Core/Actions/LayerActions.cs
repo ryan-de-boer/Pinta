@@ -25,6 +25,8 @@
 // THE SOFTWARE.
 
 using System;
+using System.Linq;
+using Pango;
 
 namespace Pinta.Core;
 
@@ -34,6 +36,7 @@ public sealed class LayerActions
 	public Command DeleteLayer { get; }
 	public Command DuplicateLayer { get; }
 	public Command MergeLayerDown { get; }
+	public Command AddTransparencyMask { get; }
 	public Command ImportFromFile { get; }
 	public Command FlipHorizontal { get; }
 	public Command FlipVertical { get; }
@@ -83,6 +86,12 @@ public sealed class LayerActions
 			null,
 			Resources.Icons.LayerMergeDown,
 			shortcuts: ["<Primary>M"]);
+
+		AddTransparencyMask = new Command (
+			"addtransparencymask",
+			Translations.GetString ("Add Transparency Mask"),
+			null,
+			Resources.Icons.ImageFlipVertical);
 
 		ImportFromFile = new Command (
 			"importfromfile",
@@ -154,6 +163,7 @@ public sealed class LayerActions
 			DeleteLayer,
 			DuplicateLayer,
 			MergeLayerDown,
+			AddTransparencyMask,
 			ImportFromFile,
 
 			FlipHorizontal,
@@ -172,6 +182,7 @@ public sealed class LayerActions
 		DeleteLayer.Activated += HandlePintaCoreActionsLayersDeleteLayerActivated;
 		DuplicateLayer.Activated += HandlePintaCoreActionsLayersDuplicateLayerActivated;
 		MergeLayerDown.Activated += HandlePintaCoreActionsLayersMergeLayerDownActivated;
+		AddTransparencyMask.Activated += HandlePintaCoreActionsLayersAddTransparencyMaskActivated;
 		MoveLayerDown.Activated += HandlePintaCoreActionsLayersMoveLayerDownActivated;
 		MoveLayerUp.Activated += HandlePintaCoreActionsLayersMoveLayerUpActivated;
 		FlipHorizontal.Activated += HandlePintaCoreActionsLayersFlipHorizontalActivated;
@@ -361,6 +372,43 @@ public sealed class LayerActions
 		hist.Push (h2);
 
 		doc.History.PushNewItem (hist);
+	}
+
+	private void HandlePintaCoreActionsLayersAddTransparencyMaskActivated (Gio.SimpleAction sender, Gio.SimpleAction.ActivateSignalArgs args)
+	{
+//		Document doc = workspace.ActiveDocument;
+//		doc.Layers.CurrentUserLayer.HasMask = true;
+
+		//var doc = PintaCore.Workspace.ActiveDocument;
+		//int newIndex = doc.Layers.Count() - doc.Layers.CurrentUserLayerIndex;
+
+		//var tlayer = PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer;
+		//var layer = doc.Layers[newIndex];
+
+
+
+//Console.WriteLine("CurrentUserLayer: " + doc.Layers.CurrentUserLayer.Name);
+//		MessageBox("CurrentUserLayer: " + doc.Layers.CurrentUserLayer.Name);
+//Console.WriteLine("CurrentUserLayerIndex: " + doc.Layers.CurrentUserLayerIndex);
+//		MessageBox("CurrentUserLayerIndex: " + doc.Layers.CurrentUserLayerIndex);
+//Console.WriteLine("UserLayers index: " + doc.Layers.UserLayers.ToList<UserLayer>().IndexOf(doc.Layers.CurrentUserLayer));
+//		MessageBox("UserLayers index: " + doc.Layers.UserLayers.ToList<UserLayer>().IndexOf(doc.Layers.CurrentUserLayer));
+
+		var layer = PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer;
+layer.HasMask = true;
+
+
+
+var dialog = new Gtk.AlertDialog();
+dialog.Message = "add transparency mask "+layer.Name;
+//dialog.Show(PintaCore.Chrome.MainWindow);
+	}
+
+	private void MessageBox(string message)
+	{
+		var dialog = new Gtk.AlertDialog();
+dialog.Message = message;
+dialog.Show(PintaCore.Chrome.MainWindow);
 	}
 
 	private void HandlePintaCoreActionsLayersDuplicateLayerActivated (object sender, EventArgs e)

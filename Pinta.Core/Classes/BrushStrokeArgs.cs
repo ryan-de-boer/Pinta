@@ -8,6 +8,9 @@ public sealed class BrushStrokeArgs
 	public PointI CurrentPosition { get; }
 	public PointI LastPosition { get; }
 
+	public bool WriteToMask {get;set;}
+	public Document g_document = null;
+
 	public BrushStrokeArgs (
 		Color strokeColor,
 		PointI currentPosition,

@@ -208,7 +208,7 @@ partial class CairoExtensions
 
 		if (limitToSelection) {
 			var excluded = CreateRegion (new RectangleI (0, 0, stencil.Width, stencil.Height));
-			excluded.Xor (limitRegion);
+//			excluded.Xor (limitRegion);
 			scans = new RectangleI[excluded.GetNumRectangles ()];
 			for (int i = 0, n = scans.Length; i < n; ++i) {
 				excluded.GetRectangle (i, out var cairo_rect);
@@ -282,7 +282,7 @@ partial class CairoExtensions
 
 		if (limitToSelection) {
 			var excluded = CreateRegion (new RectangleI (0, 0, stencil.Width, stencil.Height));
-			excluded.Xor (limitRegion);
+//			excluded.Xor (limitRegion);
 			scans = new RectangleI[excluded.GetNumRectangles ()];
 			for (int i = 0, n = scans.Length; i < n; ++i) {
 				excluded.GetRectangle (i, out var cairo_rect);

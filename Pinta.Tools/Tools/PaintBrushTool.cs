@@ -139,6 +139,8 @@ public sealed class PaintBrushTool : BaseBrushTool
 		g.SetSourceColor (strokeColor);
 
 		BrushStrokeArgs strokeArgs = new (strokeColor, e.Point, last_point.Value);
+		strokeArgs.WriteToMask = true;
+		strokeArgs.g_document = document;
 
 		CancelRepeatingDraw ();
 		var invalidate_rect = active_brush.DoMouseMove (g, surf, strokeArgs);

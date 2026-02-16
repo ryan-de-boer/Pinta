@@ -7,6 +7,7 @@
 // Ported to Pinta by: Jonathan Pobst <monkey@jpobst.com>                      //
 /////////////////////////////////////////////////////////////////////////////////
 
+using System;
 using System.Collections.Generic;
 using Pinta.Core;
 
@@ -56,7 +57,7 @@ public sealed class CanvasRenderer
 		scale_ratio = scale_factor.ComputeRatio ();
 	}
 
-	public void Render (
+	public void RenderOLD (
 		IReadOnlyList<Layer> layers,
 		Cairo.ImageSurface dst,
 		PointI offset,
@@ -113,4 +114,174 @@ public sealed class CanvasRenderer
 
 		dst.MarkDirty ();
 	}
+
+
+
+public void Render(
+    IReadOnlyList<Layer> layers,
+    Cairo.ImageSurface dst,
+    PointI offset,
+    RectangleI? clipRect = null)
+{
+    dst.Flush();
+
+    // Rectangle of interest
+    RectangleD r = new RectangleI(offset, dst.GetBounds().Size).ToDouble();
+    bool is_one_to_one = scale_ratio == 1;
+
+    using var g = new Cairo.Context(dst);
+    g.Translate(-offset.X, -offset.Y);
+
+    // Apply clip if needed
+    if (clipRect is not null)
+    {
+        g.Rectangle(clipRect.Value.ToDouble());
+        g.Clip();
+    }
+
+    // Background
+    if (enable_background_pattern)
+        g.FillRectangle(r, tranparent_pattern, new PointD(offset.X, offset.Y));
+    else
+        g.Clear(r);
+
+    foreach (var layer in layers)
+    {
+        Cairo.ImageSurface sourceSurface =
+            (enable_live_preview &&
+             layer == workspace.ActiveDocument.Layers.CurrentUserLayer &&
+             live_preview.IsEnabled)
+            ? live_preview.LivePreviewSurface
+            : layer.Surface;
+
+        //// If the layer has a mask, multiply it first
+        //if (layer is UserLayer userLayer && userLayer.HasMask)
+        //{
+        //    using var maskedSurface = CairoExtensions.CreateImageSurface(
+        //        Cairo.Format.Argb32,
+        //        sourceSurface.Width,
+        //        sourceSurface.Height);
+
+        //    using var gTemp = new Cairo.Context(maskedSurface);
+
+        //    // Apply layer surface
+        //    gTemp.SetSourceSurface(sourceSurface, 0, 0);
+
+        //    // Multiply by mask alpha
+        //    gTemp.MaskSurface(userLayer.MaskSurface, 0, 0);
+
+        //    // Commit to maskedSurface
+        //    gTemp.Paint();
+
+        //    sourceSurface = maskedSurface;
+        //}
+
+
+	Cairo.ImageSurface finalSurface = sourceSurface;
+Cairo.ImageSurface? maskedSurface = null;
+
+if (layer is UserLayer userLayer && userLayer.HasMask)
+{
+    maskedSurface = CairoExtensions.CreateImageSurface(
+        Cairo.Format.Argb32,
+        sourceSurface.Width,
+        sourceSurface.Height);
+
+
+				/* Good show alpha
+
+				var debug = new Cairo.ImageSurface(Cairo.Format.Argb32,
+    userLayer.MaskSurface.Width,
+    userLayer.MaskSurface.Height);
+
+using (var ctx = new Cairo.Context(debug))
+{
+    // Fill white
+    ctx.SetSourceRgb(1, 1, 1);
+    ctx.Paint();
+
+    // Multiply by mask
+    ctx.Operator = Cairo.Operator.DestIn;
+    ctx.SetSourceSurface(userLayer.MaskSurface, 0, 0);
+    ctx.Paint();
+}
+
+g.SetSourceSurface(debug, 0, 0);
+g.Paint();
+return;
+*/
+
+bool showAlpha = userLayer.ShowMask;
+if (showAlpha) {
+
+var mask = userLayer.MaskSurface;
+
+// Create a debug surface to draw the mask preview
+using var debug = new Cairo.ImageSurface(Cairo.Format.Argb32, mask.Width, mask.Height);
+
+using (var ctx = new Cairo.Context(debug))
+{
+    // Fill the entire surface black
+    ctx.SetSourceRgb(0, 0, 0);
+    ctx.Paint();
+
+    // Paint white where the mask alpha > 0
+    ctx.Operator = Cairo.Operator.Over;        // normal drawing
+    ctx.SetSourceRgb(1, 1, 1);                 // white for opaque
+    ctx.MaskSurface(mask, 0, 0);               // use mask alpha to apply white
+}
+
+// Draw the debug surface onto the main context
+g.SetSourceSurface(debug, 0, 0);
+g.Paint();
+					return;
+
+				}
+
+				
+
+
+    using (var gTemp = new Cairo.Context(maskedSurface))
+    {
+        // Step 1: Copy the source into maskedSurface
+        gTemp.SetSourceSurface(sourceSurface, 0, 0);
+        gTemp.Paint();
+
+        // Step 2: Multiply alpha by mask using DestIn
+        gTemp.Operator = Cairo.Operator.DestIn;
+        gTemp.SetSourceSurface(userLayer.MaskSurface, 0, 0);
+        gTemp.Paint();
+    }
+
+    finalSurface = maskedSurface;
+}
+
+        g.Save();
+
+        if (!is_one_to_one)
+        {
+            double invScale = 1.0 / scale_ratio;
+            g.Scale(invScale, invScale);
+        }
+
+        g.Transform(layer.Transform);
+
+        // Use nearest-neighbor when zoomed out, bilinear otherwise
+        ResamplingMode filter = (scale_ratio <= 1) ? ResamplingMode.NearestNeighbor : ResamplingMode.Bilinear;
+
+        g.SetSourceSurface(finalSurface, filter);
+        g.SetBlendMode(layer.BlendMode);
+        g.PaintWithAlpha(layer.Opacity);
+
+        g.Restore();
+
+			// Dispose after painting
+maskedSurface?.Dispose();
+    }
+
+    dst.MarkDirty();
+}
+
+
+
 }

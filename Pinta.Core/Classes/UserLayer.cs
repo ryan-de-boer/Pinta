@@ -27,6 +27,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using Cairo;
+using Pango;
 
 namespace Pinta.Core;
 
@@ -58,6 +59,99 @@ public sealed class UserLayer : Layer
 		TextLayer = new ReEditableLayer (this);
 	}
 
+public override void CreateMaskV()
+{
+    if (mask_surface != null)
+        return;
+
+    var width = Surface.Width;
+var height = Surface.Height;
+    mask_surface = new ImageSurface(Format.A8, width, height);
+
+    using (var g = new Cairo.Context(mask_surface))
+    {
+	SolidPattern white = SolidPattern.CreateRgba(1.0,1.0,1.0,1.0);
+    g.SetSource(white);
+        g.Paint();
+    }
+
+    //test
+    // Assume you have a UserLayer with a mask
+UserLayer userLayer = this; // your layer
+if (!HasMaskS || MaskSurface is null)
+    return;
+
+// Get the mask surface
+ImageSurface maskSurface = MaskSurface;
+
+// Lock the surface for drawing
+using (var g = new Cairo.Context(maskSurface))
+{
+    //// Get mask width & height
+    //int w = mask.Width;
+    //int h = mask.Height;
+
+    //// Clear mask first
+    //ctx.SetSourceRgb(0, 0, 0); // black
+    //ctx.Paint();
+
+    //// Draw half white rectangle
+    //ctx.Rectangle(0, 0, w / 2, h); // left half
+    //ctx.SetSourceRgb(1, 1, 1);      // white
+    //ctx.Fill();
+
+    // Left half = fully visible
+    g.Operator = Operator.Source;
+    g.SetSourceRgba(1, 1, 1, 1);
+    g.Rectangle(0, 0, maskSurface.Width / 2, maskSurface.Height);
+    g.Fill();
+
+    // Right half = fully transparent
+    g.Operator = Operator.Source;
+//    g.SetSourceRgba(1, 1, 1, 0);
+    g.SetSourceRgba(1, 1, 1, 1);
+    g.Rectangle(maskSurface.Width / 2, 0, maskSurface.Width / 2, maskSurface.Height);
+    g.Fill();
+
+    maskSurface.MarkDirty();
+}
+    //test
+
+
+    OnMaskChanged();
+
+	
+}
+
+
+
+	public void EraseMask(RectangleI area)
+{
+    if (!HasMaskS || MaskSurface is null)
+        return;
+
+    using var g = new Cairo.Context(MaskSurface);
+
+    // Set operator to "Source" so we directly write the color
+    g.Operator = Operator.Source;
+
+    // Draw black (fully transparent in mask)
+    g.SetSourceRgba(0, 0, 0, 0.5);
+
+    g.Rectangle(area.X, area.Y, area.Width, area.Height);
+    g.Fill();
+
+    MaskSurface.MarkDirty();
+
+    // Notify listeners the mask changed
+    OnMaskChanged();
+
+    // Optional: force canvas to redraw
+    FirePropertyChanged(nameof(Surface));
+}
+
+
+
 	//Stores most of the editable text's data, including the text itself.
 	public TextEngine TextEngine { get; internal set; }
 
@@ -66,7 +160,7 @@ public sealed class UserLayer : Layer
 	public RectangleI PreviousTextBounds { get; set; } = RectangleI.Zero;
 
 	public override void ApplyTransform (
-		Matrix xform,
+		Cairo.Matrix xform,
 		Size old_size,
 		Size new_size)
 	{
@@ -85,7 +179,7 @@ public sealed class UserLayer : Layer
 	{
 		RadiansAngle radians = angle.ToRadians ();
 
-		Matrix xform = CairoExtensions.CreateIdentityMatrix ();
+		Cairo.Matrix xform = CairoExtensions.CreateIdentityMatrix ();
 		xform.Translate (new_size.Width / 2.0, new_size.Height / 2.0);
 		xform.Rotate (radians.Radians);
 		xform.Translate (-old_size.Width / 2.0, -old_size.Height / 2.0);

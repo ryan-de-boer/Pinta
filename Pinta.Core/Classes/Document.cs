@@ -266,16 +266,39 @@ public sealed class Document
 
 		using Context g = new (dst);
 
-		foreach (var layer in Layers.GetLayersToPaint ()) {
+		//foreach (var layer in Layers.GetLayersToPaint ()) {
 
-			Color color = layer.Surface.GetColorBgra (position).ToCairoColor ();
+		//	Color color = layer.Surface.GetColorBgra (position).ToCairoColor ();
 
-			g.SetBlendMode (layer.BlendMode);
-			g.SetSourceColor (color);
+		//	g.SetBlendMode (layer.BlendMode);
+		//	g.SetSourceColor (color);
 
-			g.Rectangle (dst.GetBounds ().ToDouble ());
-			g.PaintWithAlpha (layer.Opacity);
-		}
+		//	g.Rectangle (dst.GetBounds ().ToDouble ());
+		//	g.PaintWithAlpha (layer.Opacity);
+		//}
+
+		foreach (var layer in Layers.GetLayersToPaint()) 
+{
+    // Old:
+    Color color = layer.Surface.GetColorBgra(position).ToCairoColor();
+
+    // New: compute masked color
+    ColorBgra pixel = layer.Surface.GetColorBgra(position);
+    if (layer.HasMaskS && layer.MaskSurface != null)
+    {
+        // Sample the mask at the same position (mask is grayscale: 0=transparent, 255=opaque)
+        byte maskAlpha = layer.MaskSurface.GetColorBgra(position).A;				
+        byte pixelA = (byte)((pixel.A * maskAlpha) / 255);
+	pixel = ColorBgra.FromBgra(pixel.B, pixel.G, pixel.R, pixelA);
+    }
+
+    Color color2 = pixel.ToCairoColor();
+
+    g.SetBlendMode(layer.BlendMode);
+    g.SetSourceColor(color2);
+    g.Rectangle(dst.GetBounds().ToDouble());
+    g.PaintWithAlpha(layer.Opacity);
+}
 
 		return dst.GetColorBgra (PointI.Zero);
 	}

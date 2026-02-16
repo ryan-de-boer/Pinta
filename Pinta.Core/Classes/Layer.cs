@@ -70,6 +70,58 @@ public class Layer : ObservableObject
 		set { if (opacity != value) SetValue (OpacityProperty, ref opacity, value); }
 	}
 
+private bool hasMask;
+
+public bool HasMask
+{
+    get => hasMask;
+    set
+    {
+//        if (hasMask == value)
+//            return;
+
+        hasMask = value;
+
+			if (hasMask) {
+				CreateMaskV();
+			}
+
+        OnMaskChanged();
+    }
+}
+
+	public bool ShowMask { get; set; } = false;
+
+	public event EventHandler? MaskChanged;
+protected void OnMaskChanged()
+{
+    MaskChanged?.Invoke(this, EventArgs.Empty);
+		FirePropertyChanged(nameof(Surface));
+
+		//				OnSurfaceChanged();
+
+	}
+
+	public void OnChanged ()
+	{
+		FirePropertyChanged(nameof(Surface));
+		}
+
+
+
+	protected ImageSurface? mask_surface;
+
+public bool HasMaskS => mask_surface != null;
+
+public ImageSurface? MaskSurface => mask_surface;
+
+	public virtual void CreateMaskV()
+	{ }
+
+
+
+
+
 	public bool Hidden {
 		get => hidden;
 		set { if (hidden != value) SetValue (HiddenProperty, ref hidden, value); }
@@ -150,7 +202,7 @@ public class Layer : ObservableObject
 		DrawWithOperator (ctx, Surface, op, opacity, transform);
 	}
 
-	public void DrawWithOperator (
+	public void DrawWithOperatorOLD (
 		Context ctx,
 		ImageSurface surface,
 		Operator op,
@@ -172,6 +224,58 @@ public class Layer : ObservableObject
 
 		ctx.Restore ();
 	}
+
+	public void DrawWithOperator(
+    Context ctx,
+    ImageSurface surface,
+    Operator op,
+    double opacity = 1.0,
+    bool transform = true,
+    ImageSurface? mask = null)  // optional mask
+{
+    ctx.Save();
+
+    if (transform)
+        ctx.Transform(Transform);
+
+    ctx.Operator = op;
+
+    if (mask is null)
+    {
+        // no mask, draw normally
+        ctx.SetSourceSurface(surface, 0, 0);
+        if (opacity >= 1.0)
+            ctx.Paint();
+        else
+            ctx.PaintWithAlpha(opacity);
+    }
+    else
+    {
+        // apply mask: create a temporary surface
+        using var temp = CairoExtensions.CreateImageSurface(surface.Format, surface.Width, surface.Height);
+        using (var tempCtx = new Context(temp))
+        {
+            // draw original surface
+            tempCtx.SetSourceSurface(surface, 0, 0);
+            tempCtx.Paint();
+
+            // multiply alpha by mask
+            tempCtx.Operator = Operator.DestIn;
+            tempCtx.SetSourceSurface(mask, 0, 0);
+            tempCtx.Paint();
+        }
+
+        // draw the masked surface onto the main context
+        ctx.SetSourceSurface(temp, 0, 0);
+        if (opacity >= 1.0)
+            ctx.Paint();
+        else
+            ctx.PaintWithAlpha(opacity);
+    }
+
+    ctx.Restore();
+}
+
 
 	public virtual void ApplyTransform (
 		Matrix xform,

@@ -51,6 +51,7 @@ public sealed class LayersListView : Gtk.ScrolledWindow
 		Gtk.SignalListItemFactory factory = Gtk.SignalListItemFactory.New ();
 		factory.OnSetup += HandleFactorySetup;
 		factory.OnBind += HandleFactoryBind;
+		factory.OnUnbind += HandleFactoryUnbind;
 
 		Gtk.ListView listView = Gtk.ListView.New (selectionModel, factory);
 		listView.CanFocus = false;
@@ -202,6 +203,16 @@ public sealed class LayersListView : Gtk.ScrolledWindow
 		list_model.Remove ((uint) (active_document.Layers.Count () - e.Index));
 		list_view.ScrollToSelectedItem (selection_model);
 	}
+
+	private static void HandleFactoryUnbind (
+    Gtk.SignalListItemFactory factory,
+    Gtk.SignalListItemFactory.UnbindSignalArgs args)
+	{
+		var list_item = (Gtk.ListItem) args.Object;
+		var widget = (LayersListViewItemWidget) list_item.GetChild ()!;
+		widget.Unbind ();
+	}
+
 
 	private void HandleSelectedLayerChanged (object? sender, EventArgs e)
 	{
