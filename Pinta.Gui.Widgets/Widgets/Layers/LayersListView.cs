@@ -86,11 +86,27 @@ public sealed class LayersListView : Gtk.ScrolledWindow
 		item.SetChild (new LayersListViewItemWidget ());
 	}
 
+//	public class LayerItem : GLib.Object
+//{
+//    public UserLayer Layer { get; }
+
+//    public LayerItem(UserLayer layer)
+//    {
+//        Layer = layer;
+//    }
+//}
+
 	private static void HandleFactoryBind (
 		Gtk.SignalListItemFactory factory,
 		Gtk.SignalListItemFactory.BindSignalArgs args)
 	{
 		var list_item = (Gtk.ListItem) args.Object;
+		//UserLayer layer = null;
+		//if (list_item.Item != null)
+		//	{
+		//	layer = (UserLayer)list_item.Item;
+		//	}
+
 		var model_item = (LayersListViewItem) list_item.GetItem ()!;
 		var widget = (LayersListViewItemWidget) list_item.GetChild ()!;
 		widget.SetItem (model_item);

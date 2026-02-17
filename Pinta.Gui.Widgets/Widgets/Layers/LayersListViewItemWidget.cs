@@ -134,7 +134,7 @@ public sealed class LayersListViewItemWidget : Gtk.Box
 	private readonly Gtk.CheckButton visible_button;
 
 	private Gtk.Button m_maskButton;
-	UserLayer m_layer;
+//	UserLayer m_layer;
 
 	public LayersListViewItemWidget ()
 	{
@@ -163,18 +163,38 @@ itemThumbnail.AddController(clickGesture);
 
 		m_maskButton.OnClicked += (s, e) =>
 		{
-			PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer.ShowMask = true;
-			PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer.OnChanged();
+//this.GrabFocus();
+//m_layer.ShowMask = true;
+//			m_layer.OnChanged();
+
+
+					if (item is null || item.UserLayer is null || !PintaCore.Workspace.HasOpenDocuments)
+			return;
+
+		Document doc = PintaCore.Workspace.ActiveDocument;
+		// Ensure this is the current layer before opening the menu, since the menu actions
+		// apply to the current layer.
+		if (doc.Layers.CurrentUserLayer != item.UserLayer)
+			doc.Layers.SetCurrentUserLayer (item.UserLayer);
+
+
+			item.UserLayer.ShowMask = true;
+			item.UserLayer.OnChanged();
+
+//			doc.Layers.SetCurrentUserLayer(m_layer);
+
 var dialog = new Gtk.AlertDialog();
-dialog.Message = "Message_"+m_layer.Name;
+dialog.Message = "Message_"+item.UserLayer.Name;
 var root = this.Root as Gtk.Window;
 //dialog.Show(root);
 
 		};
 
-		m_layer = PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer;
+//		m_layer = PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer;
 //		m_layer.MaskChanged += (s, e) => UpdateMaskIcon();
-		m_layer.MaskChanged += M_layer_MaskChanged;
+if (item!=null) {
+		item.UserLayer.MaskChanged += M_layer_MaskChanged;
+		}
 
 		UpdateMaskIcon();
 
@@ -213,14 +233,26 @@ var root = this.Root as Gtk.Window;
 	private void ClickGesture_OnPressed (Gtk.GestureClick sender, Gtk.GestureClick.PressedSignalArgs args)
 	{
 //		m_layer.ShowMask = false;
-					PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer.ShowMask = false;
-			PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer.OnChanged();
+//					PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer.ShowMask = false;
+//			PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer.OnChanged();
+
+		item.UserLayer.ShowMask = false;
+
+				Document doc = PintaCore.Workspace.ActiveDocument;
+		doc.Layers.CurrentUserLayer.ShowMask = false;
+		// Ensure this is the current layer before opening the menu, since the menu actions
+		// apply to the current layer.
+		if (doc.Layers.CurrentUserLayer != item.UserLayer)
+			doc.Layers.SetCurrentUserLayer (item.UserLayer);
+
+
+		item.UserLayer.OnChanged();
 
 	}
 
 	private void M_layer_MaskChanged (object? sender, EventArgs e)
 	{
-		    if (sender != m_layer)
+		    if (sender != item.UserLayer)
         return;
 
 //		var layer = PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer;
@@ -238,8 +270,16 @@ var root = this.Root as Gtk.Window;
 	private void UpdateMaskIcon()
 {
 ////		var layer = PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer;
-	m_layer = PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer;
-    m_maskButton.Visible = m_layer.HasMask;
+//	m_layer = PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer;
+if (item!=null)
+{
+    m_maskButton.Visible = item.UserLayer.HasMask;
+						item.UserLayer.OnChanged();
+}
+else
+	{
+	m_maskButton.Visible = false;
+	}
 }
 
 	private void MenuGesture_OnPressed (
@@ -284,52 +324,53 @@ var root = this.Root as Gtk.Window;
 	/// <summary>
 	/// Bind the widget to a different LayersListViewItem.
 	/// </summary>
-public void SetItemOLD (LayersListViewItem newItem)
-{
-    // Detach old handlers
-    if (item != null)
-        item.LayerModified -= OnLayerModified;
+//public void SetItemOLD (LayersListViewItem newItem)
+//{
+//    // Detach old handlers
+//    if (item != null)
+//        item.LayerModified -= OnLayerModified;
 
 
-    // Assign new references
-    item = newItem;
-    m_layer = newItem.UserLayer;
+//    // Assign new references
+//    item = newItem;
+//    m_layer = newItem.UserLayer;
 
-    // Attach new handlers
-    item.LayerModified += OnLayerModified;
+//    // Attach new handlers
+//    item.LayerModified += OnLayerModified;
 
-    UpdateFromLayer ();
-}
+//    UpdateFromLayer ();
+//}
 
 	public void SetItem(LayersListViewItem newItem)
 {
     // Unsubscribe from old layer
-    if (m_layer != null)
-        m_layer.MaskChanged -= M_layer_MaskChanged;
+    if (item != null && item.UserLayer != null)
+        item.UserLayer.MaskChanged -= M_layer_MaskChanged;
 
     if (item != null)
         item.LayerModified -= OnLayerModified;
 
     // Assign new item + layer
     item = newItem;
-    m_layer = newItem.UserLayer;
+//    item.UserLayer = newItem.UserLayer;
 
     // Subscribe to new layer
-    m_layer.MaskChanged += M_layer_MaskChanged;
+    item.UserLayer.MaskChanged += M_layer_MaskChanged;
     item.LayerModified += OnLayerModified;
+
 
     UpdateFromLayer();
 }
 
 	public void Unbind()
 {
-    if (m_layer != null)
-        m_layer.MaskChanged -= M_layer_MaskChanged;
+    if (item.UserLayer != null)
+        item.UserLayer.MaskChanged -= M_layer_MaskChanged;
 
     if (item != null)
         item.LayerModified -= OnLayerModified;
 
-    m_layer = null;
+    //item.UserLayer = null;
     item = null;
 }
 

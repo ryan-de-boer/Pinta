@@ -180,7 +180,7 @@ public void Render(
 	Cairo.ImageSurface finalSurface = sourceSurface;
 Cairo.ImageSurface? maskedSurface = null;
 
-if (layer is UserLayer userLayer && userLayer.HasMask)
+if (layer is UserLayer userLayer && userLayer.HasMask/* && userLayer==workspace.ActiveDocument.Layers.CurrentUserLayer*/)
 {
     maskedSurface = CairoExtensions.CreateImageSurface(
         Cairo.Format.Argb32,
@@ -234,13 +234,18 @@ using (var ctx = new Cairo.Context(debug))
 // Draw the debug surface onto the main context
 g.SetSourceSurface(debug, 0, 0);
 g.Paint();
-					return;
+					finalSurface = debug;
+//					return;
+if (userLayer!=workspace.ActiveDocument.Layers.CurrentUserLayer)
+continue;
+else
+						return;
 
 				}
 
 				
 
-
+if (!showAlpha)
     using (var gTemp = new Cairo.Context(maskedSurface))
     {
         // Step 1: Copy the source into maskedSurface
@@ -253,6 +258,7 @@ g.Paint();
         gTemp.Paint();
     }
 
+if (!showAlpha)
     finalSurface = maskedSurface;
 }
 
