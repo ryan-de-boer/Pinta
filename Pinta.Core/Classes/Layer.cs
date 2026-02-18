@@ -104,6 +104,7 @@ protected void OnMaskChanged()
 
 	public void OnChanged ()
 	{
+		OnMaskChanged();
 		FirePropertyChanged(nameof(Surface));
 		}
 

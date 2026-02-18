@@ -10,6 +10,7 @@
     <PackageReference Include="NGettext" />
     <PackageReference Include="ParagonClipper" />
     <PackageReference Include="Mono.Addins" />
+    <PackageReference Include="SixLabors.ImageSharp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Pinta.Resources\Pinta.Resources.csproj" />

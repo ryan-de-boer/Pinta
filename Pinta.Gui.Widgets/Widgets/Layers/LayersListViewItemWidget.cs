@@ -228,6 +228,11 @@ if (item!=null) {
 		item_thumbnail = itemThumbnail;
 		item_label = itemLabel;
 		visible_button = visibleButton;
+
+if (item != null) {
+m_maskButton.Visible =item.UserLayer.HasMask;
+		}
+
 	}
 
 	private void ClickGesture_OnPressed (Gtk.GestureClick sender, Gtk.GestureClick.PressedSignalArgs args)
@@ -356,6 +361,7 @@ else
 
     // Subscribe to new layer
     item.UserLayer.MaskChanged += M_layer_MaskChanged;
+		item.UserLayer.OnChanged();
     item.LayerModified += OnLayerModified;
 
 

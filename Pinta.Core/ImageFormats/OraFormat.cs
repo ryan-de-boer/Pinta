@@ -26,12 +26,18 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
+using System.Runtime.InteropServices;
 using System.Xml;
 using Cairo;
 using GdkPixbuf;
+
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Advanced;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace Pinta.Core;
 
@@ -72,6 +78,7 @@ public sealed class OraFormat : IImageImporter, IImageExporter
 		if (layerElements.Count == 0)
 			throw new XmlException ("No layers found in OpenRaster file");
 
+		UserLayer previousLayer = null;
 		for (int i = 0; i < layerElements.Count; i++) {
 
 			XmlElement layerElement = (XmlElement) layerElements[i]!;
@@ -102,21 +109,82 @@ public sealed class OraFormat : IImageImporter, IImageExporter
 					}
 				}
 
-				UserLayer layer = newDocument.Layers.CreateLayer (name);
-				newDocument.Layers.Insert (layer, 0);
-
+				UserLayer layer = null;
 				string visibility = GetAttribute (layerElement, "visibility", "visible");
+				bool useMask = false;
+				if (name.EndsWith("_mask") && visibility == "hidden" && previousLayer!=null) {
+					// Add mask to previous layer?
+					layer = previousLayer;
+					useMask = true;
+				}
+				else {
+					layer = newDocument.Layers.CreateLayer (name);
+					newDocument.Layers.Insert (layer, 0);
+
 				if (visibility == "hidden") {
 					layer.Hidden = true;
 				}
-
 				layer.Opacity = double.Parse (GetAttribute (layerElement, "opacity", "1"), GetFormat ());
 				layer.BlendMode = StandardToBlendMode (GetAttribute (layerElement, "composite-op", "svg:src-over"));
 
-				using Pixbuf pb = Pixbuf.NewFromFile (tmp_file)!; // NRT: only nullable when an error is thrown
-				using Context g = new (layer.Surface);
-				g.DrawPixbuf (pb, (PointD) position);
+				}
 
+
+
+				using Pixbuf pb = Pixbuf.NewFromFile (tmp_file)!; // NRT: only nullable when an error is thrown
+				Context? g = null;
+				if (useMask) {
+					layer.HasMask = true;
+//					g = new (layer.MaskSurface);
+//				g.DrawPixbuf (pb, (PointD) position);
+DrawPixbufToMask(layer.MaskSurface, pb, position);
+
+					    layer.MaskSurface.Flush();
+    layer.MaskSurface.MarkDirty();
+
+layer.MaskSurface.Flush();
+
+										layer.OnChanged();
+
+
+Debug.WriteLine(layer.MaskSurface.GetType().FullName);
+Debug.WriteLine(layer.MaskSurface.Format);
+
+					/*
+int width = layer.MaskSurface.Width;
+int height = layer.MaskSurface.Height;
+int stride = layer.MaskSurface.Stride;
+
+Span<byte> src = layer.MaskSurface.GetData();
+
+using var image = new Image<Rgba32>(width, height);
+
+for (int y = 0; y < height; y++)
+{
+						//image.row
+    var row = image.DangerousGetPixelRowMemory(y).Span;
+    int rowOffset = y * stride;
+
+    for (int x = 0; x < width; x++)
+    {
+        byte alpha = src[rowOffset + x];
+
+        row[x] = new Rgba32(255, 255, 255, alpha);
+    }
+}
+
+image.Save("debug_mask.png");
+*/
+				}
+				else {
+					g = new (layer.Surface);
+				g.DrawPixbuf (pb, (PointD) position);
+				}
+
+				previousLayer = layer;
+				if (g!=null) {
+				g.Dispose();
+				}
 				try {
 					File.Delete (tmp_file);
 				} catch { }
@@ -129,6 +197,65 @@ public sealed class OraFormat : IImageImporter, IImageExporter
 
 		return newDocument;
 	}
+
+    /// <summary>
+    /// Draw a Pixbuf onto an A8 mask surface at the given position.
+    /// Copies alpha channel only; ignores color.
+    /// Safe version using Span<byte>.
+    /// </summary>
+private unsafe void DrawPixbufToMask(Cairo.ImageSurface maskSurface, Pixbuf pb, PointI position)
+{
+    if (maskSurface.Format != Cairo.Format.A8)
+        throw new InvalidOperationException("Mask surface must be A8 format.");
+
+    int maskWidth = maskSurface.Width;
+    int maskHeight = maskSurface.Height;
+
+    int pbWidth = pb.Width;
+    int pbHeight = pb.Height;
+    int pbChannels = pb.NChannels;
+    int pbRowstride = pb.Rowstride;
+
+    Span<byte> maskData = maskSurface.GetData();
+
+    for (int y = 0; y < pbHeight; y++)
+    {
+        int maskY = y + (int)position.Y;
+        if (maskY < 0 || maskY >= maskHeight)
+            continue;
+
+        for (int x = 0; x < pbWidth; x++)
+        {
+            int maskX = x + (int)position.X;
+            if (maskX < 0 || maskX >= maskWidth)
+                continue;
+
+            // Read pixel from Pixbuf
+            byte alpha;
+            IntPtr pixelPtr = pb.Pixels + y * pbRowstride + x * pbChannels;
+
+            if (pb.HasAlpha)
+            {
+                alpha = Marshal.ReadByte(pixelPtr + 3); // alpha channel
+            }
+            else
+            {
+                // Convert RGB to luminance for alpha
+                byte r = Marshal.ReadByte(pixelPtr + 0);
+                byte g = Marshal.ReadByte(pixelPtr + 1);
+                byte b = Marshal.ReadByte(pixelPtr + 2);
+                alpha = (byte)((r + g + b) / 3); // simple brightness -> alpha
+            }
+
+            // Write alpha into mask surface (A8)
+            maskData[maskY * maskSurface.Stride + maskX] = alpha;
+        }
+    }
+
+    maskSurface.Flush();
+    maskSurface.MarkDirty();
+}
+
 
 	private static CultureInfo GetFormat ()
 		=> CultureInfo.CreateSpecificCulture ("en");
@@ -176,6 +303,17 @@ public sealed class OraFormat : IImageImporter, IImageExporter
 				writer.WriteAttributeString ("visibility", "hidden");
 
 			writer.WriteEndElement ();
+
+			if (layer.HasMask) {
+			writer.WriteStartElement ("layer");
+			writer.WriteAttributeString ("opacity", string.Format (GetFormat (), "{0:0.00}", 0.0));
+			writer.WriteAttributeString ("name", layer.Name+"_mask");
+			writer.WriteAttributeString ("composite-op", BlendModeToStandard (BlendMode.Multiply));
+			writer.WriteAttributeString ("src", "data/layer" + i.ToString () + "_mask.png");
+			writer.WriteAttributeString ("visibility", "hidden");
+			writer.WriteEndElement ();
+
+			}
 		}
 
 		writer.WriteEndElement (); // stack
@@ -209,11 +347,21 @@ public sealed class OraFormat : IImageImporter, IImageExporter
 	private static void AddLayerEntries (ZipArchive archive, Document document)
 	{
 		for (int i = 0; i < document.Layers.UserLayers.Count; i++) {
+			{
 			using Pixbuf pb = document.Layers.UserLayers[i].Surface.ToPixbuf ();
 			byte[] buf = pb.SaveToBuffer ("png");
 			ZipArchiveEntry layerEntry = archive.CreateEntry ($"data/layer{i}.png");
 			using Stream layerStream = layerEntry.Open ();
 			layerStream.Write (buf, 0, buf.Length);
+			}
+
+			if (document.Layers.UserLayers[i].HasMask) {
+			using Pixbuf pb = document.Layers.UserLayers[i].MaskSurface.ToPixbuf ();
+			byte[] buf = pb.SaveToBuffer ("png");
+			ZipArchiveEntry layerEntry = archive.CreateEntry ($"data/layer{i}_mask.png");
+			using Stream layerStream = layerEntry.Open ();
+			layerStream.Write (buf, 0, buf.Length);
+			}
 		}
 	}
 
