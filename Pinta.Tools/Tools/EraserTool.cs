@@ -123,6 +123,7 @@ public sealed class EraserTool : BaseBrushTool
 					var mask = document.Layers.CurrentUserLayer.MaskSurface;
 					using (var mg = new Context (mask)) {
 						EraseSmoothMaskDraw(mask, mg, lastPointD, newPointD);
+						document.Layers.CurrentUserLayer.OnChanged();
 					}
 
 				}
@@ -130,6 +131,7 @@ public sealed class EraserTool : BaseBrushTool
 					var mask = document.Layers.CurrentUserLayer.MaskSurface;
 					using (var mg = new Context (mask)) {
 						EraseSmoothMask (mask, mg, lastPointD, newPointD);
+						document.Layers.CurrentUserLayer.OnChanged();
 					}
 
 				} else {

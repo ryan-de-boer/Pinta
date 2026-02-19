@@ -144,6 +144,7 @@ public sealed class PaintBrushTool : BaseBrushTool
 
 		CancelRepeatingDraw ();
 		var invalidate_rect = active_brush.DoMouseMove (g, surf, strokeArgs);
+		document.Layers.CurrentUserLayer.OnChanged();
 
 		// If we draw partially offscreen, Cairo gives us a bogus
 		// dirty rectangle, so redraw everything.

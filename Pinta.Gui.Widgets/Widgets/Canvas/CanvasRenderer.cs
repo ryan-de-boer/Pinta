@@ -9,6 +9,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Transactions;
 using Pinta.Core;
 
 namespace Pinta.Gui.Widgets;
@@ -121,8 +122,11 @@ public void Render(
     IReadOnlyList<Layer> layers,
     Cairo.ImageSurface dst,
     PointI offset,
-    RectangleI? clipRect = null)
+    RectangleI? clipRect = null,
+    bool renderMask=false)
 {
+		Cairo.ImageSurface? debug2 = null;
+
     dst.Flush();
 
     // Rectangle of interest
@@ -177,10 +181,56 @@ public void Render(
         //}
 
 
+			bool skip = false;
 	Cairo.ImageSurface finalSurface = sourceSurface;
+			UserLayer uul = layer as UserLayer;
+			if (renderMask && layer is UserLayer ul && uul.HasMask)
+{
+
+
+
+var mask = ul.MaskSurface;
+				int widthRequest =60;
+				int heightRequest = 40;
+
+// Create a debug surface to draw the mask preview
+//debug2 = new Cairo.ImageSurface(Cairo.Format.Argb32, widthRequest, heightRequest);
+debug2 = new Cairo.ImageSurface(Cairo.Format.Argb32, mask.Width, mask.Height);
+
+using (var ctx = new Cairo.Context(debug2))
+{
+    // Calculate scaling factors
+//    double scaleX = (double)widthRequest / mask.Width;
+//    double scaleY = (double)heightRequest / mask.Height;
+    // Scale based on the layer surface, not mask size
+
+//    double scaleX = (double)widthRequest / ul.Surface.Width;
+//    double scaleY = (double)heightRequest / ul.Surface.Height;
+//    ctx.Scale(scaleX, scaleY);
+
+
+    // Fill black
+    ctx.SetSourceRgb(0, 0, 0);
+    ctx.Paint();
+
+    // Set operator for mask drawing
+    ctx.Operator = Cairo.Operator.Over;
+
+    // Paint white where the mask alpha > 0
+    ctx.SetSourceRgb(1, 1, 1);
+    ctx.MaskSurface(mask, 0, 0); // mask alpha is used
+}
+
+// Draw scaled debug surface onto main context
+g.SetSourceSurface(debug2, 0, 0);
+g.Paint();
+finalSurface = debug2;
+skip = true;
+}
+
 Cairo.ImageSurface? maskedSurface = null;
 
-if (layer is UserLayer userLayer && userLayer.HasMask/* && userLayer==workspace.ActiveDocument.Layers.CurrentUserLayer*/)
+if (!skip && layer is UserLayer userLayer && userLayer.HasMask/* && userLayer==workspace.ActiveDocument.Layers.CurrentUserLayer*/)
 {
     maskedSurface = CairoExtensions.CreateImageSurface(
         Cairo.Format.Argb32,
@@ -212,7 +262,26 @@ return;
 */
 
 bool showAlpha = userLayer.ShowMask;
-if (showAlpha) {
+bool showMaskPreview = renderMask;
+
+if (!skip && showMaskPreview)
+{
+    using var debug = new Cairo.ImageSurface(Cairo.Format.Argb32,
+        userLayer.MaskSurface.Width,
+        userLayer.MaskSurface.Height);
+
+    using (var ctx = new Cairo.Context(debug))
+    {
+        ctx.SetSourceRgb(0, 0, 0);
+        ctx.Paint();
+
+        ctx.SetSourceRgb(1, 1, 1);
+        ctx.MaskSurface(userLayer.MaskSurface, 0, 0);
+    }
+
+    finalSurface = debug;
+}
+else if (!skip && showAlpha) {
 
 var mask = userLayer.MaskSurface;
 
@@ -245,7 +314,7 @@ else
 
 				
 
-if (!showAlpha)
+if (!skip && !showAlpha && !showMaskPreview)
     using (var gTemp = new Cairo.Context(maskedSurface))
     {
         // Step 1: Copy the source into maskedSurface
@@ -258,7 +327,7 @@ if (!showAlpha)
         gTemp.Paint();
     }
 
-if (!showAlpha)
+if (!skip && !showAlpha && !showMaskPreview)
     finalSurface = maskedSurface;
 }
 
@@ -283,6 +352,8 @@ if (!showAlpha)
 
 			// Dispose after painting
 maskedSurface?.Dispose();
+			if (debug2!=null)
+				debug2.Dispose();
     }
 
     dst.MarkDirty();

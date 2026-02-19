@@ -56,34 +56,131 @@ public sealed partial class LayersListViewItem
 	public string Label => UserLayer?.Name ?? string.Empty;
 	public bool Visible => !UserLayer?.Hidden ?? false;
 
-	public ImageSurface BuildThumbnail (
-		int widthRequest,
-		int heightRequest)
-	{
-		if (document is null || UserLayer is null)
-			throw new InvalidOperationException ($"{nameof (LayersListViewItem)} is not initialized");
+public ImageSurface BuildThumbnail(
+    int widthRequest,
+    int heightRequest,
+    bool isMask)
+{
+    if (document is null || UserLayer is null)
+        throw new InvalidOperationException($"{nameof(LayersListViewItem)} is not initialized");
 
-		ImageSurface surface = CairoExtensions.CreateImageSurface (Format.Argb32, widthRequest, heightRequest);
+    ImageSurface surface = CairoExtensions.CreateImageSurface(
+        Format.Argb32,
+        widthRequest,
+        heightRequest);
 
-		List<Layer> layers = UserLayer.GetLayersToPaint ().ToList ();
-		// For the current layer, show the selection layer too (e.g. when moving the selection's contents).
-		if (UserLayer == document.Layers.CurrentUserLayer && document.Layers.ShowSelectionLayer)
-			layers.Add (document.Layers.SelectionLayer);
+    List<Layer> layers = UserLayer.GetLayersToPaint().ToList();
 
-		// Directly use the layer's surface if there isn't any blending required.
-		if (layers.Count == 1)
-			return layers[0].Surface;
+    if (UserLayer == document.Layers.CurrentUserLayer &&
+        document.Layers.ShowSelectionLayer)
+    {
+        layers.Add(document.Layers.SelectionLayer);
+    }
 
-		canvas_renderer ??= new CanvasRenderer (
-			PintaCore.LivePreview,
-			PintaCore.Workspace,
-			enableLivePreview: false,
-			enableBackgroundPattern: true);
-		canvas_renderer.Initialize (document.ImageSize, new Size (widthRequest, heightRequest));
-		canvas_renderer.Render (layers, surface, PointI.Zero);
+    // ✅ MASK THUMBNAIL — handle FIRST
+    if (isMask && UserLayer.HasMask)
+    {
+        using var ctx = new Context(surface);
 
-		return surface;
-	}
+        ctx.SetSourceRgb(0, 0, 0);
+        ctx.Paint();
+
+        ctx.SetSourceRgb(1, 1, 1);
+        ctx.MaskSurface(UserLayer.MaskSurface, 0, 0);
+
+        return surface;
+    }
+
+    // Normal layer shortcut (only when NOT mask)
+    if (!isMask && layers.Count == 1)
+        return layers[0].Surface;
+
+    canvas_renderer ??= new CanvasRenderer(
+        PintaCore.LivePreview,
+        PintaCore.Workspace,
+        enableLivePreview: false,
+        enableBackgroundPattern: true);
+
+    canvas_renderer.Initialize(document.ImageSize,
+        new Size(widthRequest, heightRequest));
+
+    canvas_renderer.Render(
+        layers,
+        surface,
+        PointI.Zero,
+        null,
+        renderMask: false);
+
+    return surface;
+}
+
+	public ImageSurface BuildThumbnail2(
+    int widthRequest,
+    int heightRequest
+    )
+{
+		bool isMask = true;
+
+    if (document is null || UserLayer is null)
+        throw new InvalidOperationException($"{nameof(LayersListViewItem)} is not initialized");
+
+    //ImageSurface surface = CairoExtensions.CreateImageSurface(
+    //    Format.Argb32,
+    //    widthRequest,
+    //    heightRequest);
+
+
+    List<Layer> layers = UserLayer.GetLayersToPaint().ToList();
+
+    ImageSurface surface = CairoExtensions.CreateImageSurface(
+        Format.Argb32,
+         layers[0].Surface.Width,
+         layers[0].Surface.Height);
+
+
+    if (UserLayer == document.Layers.CurrentUserLayer &&
+        document.Layers.ShowSelectionLayer)
+    {
+        layers.Add(document.Layers.SelectionLayer);
+    }
+
+    // ✅ MASK THUMBNAIL — handle FIRST
+    //if (isMask && UserLayer.HasMask)
+    //{
+    //    using var ctx = new Context(surface);
+
+    //    ctx.SetSourceRgb(0, 0, 0);
+    //    ctx.Paint();
+
+    //    ctx.SetSourceRgb(1, 1, 1);
+    //    ctx.MaskSurface(UserLayer.MaskSurface, 0, 0);
+
+    //    return surface;
+    //}
+
+    //// Normal layer shortcut (only when NOT mask)
+    //if (!isMask && layers.Count == 1)
+    //    return layers[0].Surface;
+
+    canvas_renderer ??= new CanvasRenderer(
+        PintaCore.LivePreview,
+        PintaCore.Workspace,
+        enableLivePreview: false,
+        enableBackgroundPattern: true);
+
+    canvas_renderer.Initialize(document.ImageSize,
+        new Size(widthRequest, heightRequest));
+
+    canvas_renderer.Render(
+        layers,
+        surface,
+        PointI.Zero,
+        null,
+        renderMask: true);
+
+    return surface;
+}
+
 
 	public void HandleVisibilityToggled (bool visible)
 	{
@@ -130,6 +227,7 @@ public sealed class LayersListViewItemWidget : Gtk.Box
 	private ImageSurface? thumbnail_surface;
 
 	private readonly Gtk.DrawingArea item_thumbnail;
+	private readonly Gtk.DrawingArea item_thumbnailMask;
 	private readonly Gtk.Label item_label;
 	private readonly Gtk.CheckButton visible_button;
 
@@ -139,7 +237,7 @@ public sealed class LayersListViewItemWidget : Gtk.Box
 	public LayersListViewItemWidget ()
 	{
 		Gtk.DrawingArea itemThumbnail = Gtk.DrawingArea.New ();
-		itemThumbnail.SetDrawFunc ((area, context, width, height) => DrawThumbnail (context, width, height));
+		itemThumbnail.SetDrawFunc ((area, context, width, height) => DrawThumbnail (context, width, height, false));
 		itemThumbnail.WidthRequest = 60;
 		itemThumbnail.HeightRequest = 40;
 
@@ -149,6 +247,17 @@ clickGesture.Button = 0; // 0 = any button
 		clickGesture.OnPressed += ClickGesture_OnPressed;
 // Attach the gesture to the DrawingArea
 itemThumbnail.AddController(clickGesture);
+
+		Gtk.DrawingArea maskThumbnail = Gtk.DrawingArea.New ();
+		maskThumbnail.SetDrawFunc ((area, context, width, height) => DrawThumbnail (context, width, height, true));
+		maskThumbnail.WidthRequest = 60;
+		maskThumbnail.HeightRequest = 40;
+
+		var clickGesture2 = new Gtk.GestureClick();
+clickGesture2.Button = 0; // 0 = any button
+		clickGesture2.OnPressed += ClickGesture_OnPressed2;
+// Attach the gesture to the DrawingArea
+maskThumbnail.AddController(clickGesture2);
 
 
 		Gtk.Label itemLabel = Gtk.Label.New (string.Empty);
@@ -219,18 +328,21 @@ if (item!=null) {
 		SetOrientation (Gtk.Orientation.Horizontal);
 
 		Append (itemThumbnail);
-		Append (m_maskButton);
+		Append (maskThumbnail);		
+//		Append (m_maskButton);
 		Append (itemLabel);
 		Append (visibleButton);
 
 		// --- References to keep
 
 		item_thumbnail = itemThumbnail;
+		item_thumbnailMask = maskThumbnail;
 		item_label = itemLabel;
 		visible_button = visibleButton;
 
 if (item != null) {
 m_maskButton.Visible =item.UserLayer.HasMask;
+item_thumbnailMask.Visible =item.UserLayer.HasMask;
 		}
 
 	}
@@ -255,6 +367,29 @@ m_maskButton.Visible =item.UserLayer.HasMask;
 
 	}
 
+		private void ClickGesture_OnPressed2 (Gtk.GestureClick sender, Gtk.GestureClick.PressedSignalArgs args)
+	{
+
+					if (item is null || item.UserLayer is null || !PintaCore.Workspace.HasOpenDocuments)
+			return;
+
+		Document doc = PintaCore.Workspace.ActiveDocument;
+		// Ensure this is the current layer before opening the menu, since the menu actions
+		// apply to the current layer.
+		if (doc.Layers.CurrentUserLayer != item.UserLayer)
+			doc.Layers.SetCurrentUserLayer (item.UserLayer);
+
+			item.UserLayer.ShowMask = true;
+			item.UserLayer.OnChanged();
+
+var dialog = new Gtk.AlertDialog();
+dialog.Message = "Message_"+item.UserLayer.Name;
+var root = this.Root as Gtk.Window;
+//dialog.Show(root);
+	}
+
+	
+
 	private void M_layer_MaskChanged (object? sender, EventArgs e)
 	{
 		    if (sender != item.UserLayer)
@@ -264,6 +399,9 @@ m_maskButton.Visible =item.UserLayer.HasMask;
 //	m_layer = PintaCore.Workspace.ActiveDocument.Layers.CurrentUserLayer;
 //    m_maskButton.Visible = m_layer.HasMask;
 m_maskButton.Visible =((UserLayer)sender).HasMask;
+		item_thumbnailMask.Visible =((UserLayer)sender).HasMask;
+		item_thumbnailMask.QueueDraw();
+
 
 		var dialog = new Gtk.AlertDialog();
 dialog.Message = "Mask_"+((UserLayer)sender).Name;
@@ -279,11 +417,15 @@ var root = this.Root as Gtk.Window;
 if (item!=null)
 {
     m_maskButton.Visible = item.UserLayer.HasMask;
+			if (item_thumbnailMask!=null)
+			item_thumbnailMask.Visible = item.UserLayer.HasMask;
 						item.UserLayer.OnChanged();
 }
 else
 	{
 	m_maskButton.Visible = false;
+			if (item_thumbnailMask!=null)
+			item_thumbnailMask.Visible = false;
 	}
 }
 
@@ -406,12 +548,20 @@ else
 	private void DrawThumbnail (
 		Context g,
 		int width,
-		int height)
+		int height,
+		bool isMask)
 	{
 		if (item is null)
 			throw new InvalidOperationException ($"{nameof (item)} is null");
 
-		thumbnail_surface ??= item.BuildThumbnail (width, height);
+		if (isMask) {
+//		thumbnail_surface ??= item.BuildThumbnail2 (width, height);
+		thumbnail_surface = item.BuildThumbnail2 (width, height);
+
+		} else {
+					thumbnail_surface ??= item.BuildThumbnail (width, height, isMask);
+		}
+
 
 		double scale;
 		int draw_width;
