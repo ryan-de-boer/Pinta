@@ -306,9 +306,9 @@ private unsafe void DrawPixbufToMask(Cairo.ImageSurface maskSurface, Pixbuf pb, 
 
 			if (layer.HasMask) {
 			writer.WriteStartElement ("layer");
-			writer.WriteAttributeString ("opacity", string.Format (GetFormat (), "{0:0.00}", 0.0));
+			writer.WriteAttributeString ("opacity", string.Format (GetFormat (), "{0:0.00}", 1.0));
 			writer.WriteAttributeString ("name", layer.Name+"_mask");
-			writer.WriteAttributeString ("composite-op", BlendModeToStandard (BlendMode.Multiply));
+			writer.WriteAttributeString ("composite-op", BlendModeToStandard (BlendMode.Normal));
 			writer.WriteAttributeString ("src", "data/layer" + i.ToString () + "_mask.png");
 			writer.WriteAttributeString ("visibility", "hidden");
 			writer.WriteEndElement ();
@@ -355,13 +355,62 @@ private unsafe void DrawPixbufToMask(Cairo.ImageSurface maskSurface, Pixbuf pb, 
 			layerStream.Write (buf, 0, buf.Length);
 			}
 
-			if (document.Layers.UserLayers[i].HasMask) {
-			using Pixbuf pb = document.Layers.UserLayers[i].MaskSurface.ToPixbuf ();
-			byte[] buf = pb.SaveToBuffer ("png");
-			ZipArchiveEntry layerEntry = archive.CreateEntry ($"data/layer{i}_mask.png");
-			using Stream layerStream = layerEntry.Open ();
-			layerStream.Write (buf, 0, buf.Length);
-			}
+			//if (document.Layers.UserLayers[i].HasMask) {
+			//using Pixbuf pb = document.Layers.UserLayers[i].MaskSurface.ToPixbuf ();
+			//byte[] buf = pb.SaveToBuffer ("png");
+			//ZipArchiveEntry layerEntry = archive.CreateEntry ($"data/layer{i}_mask.png");
+			//using Stream layerStream = layerEntry.Open ();
+			//layerStream.Write (buf, 0, buf.Length);
+			//}
+
+if (document.Layers.UserLayers[i].HasMask)
+{
+    var maskSurface = document.Layers.UserLayers[i].MaskSurface;
+
+    int width = maskSurface.Width;
+    int height = maskSurface.Height;
+    int stride = maskSurface.Stride;
+
+    Span<byte> src = maskSurface.GetData();
+
+    using Pixbuf pb = Pixbuf.New(
+        Colorspace.Rgb,
+        false,  // no alpha
+        8,
+        width,
+        height
+    );
+
+    int pbStride = pb.Rowstride;
+    IntPtr destPtr = pb.Pixels;
+
+    for (int y = 0; y < height; y++)
+    {
+        int srcRow = y * stride;
+        int destRow = y * pbStride;
+
+        for (int x = 0; x < width; x++)
+        {
+            byte alpha = src[srcRow + x];
+
+            int pixelOffset = destRow + x * 3;
+
+            Marshal.WriteByte(destPtr, pixelOffset + 0, alpha); // R
+            Marshal.WriteByte(destPtr, pixelOffset + 1, alpha); // G
+            Marshal.WriteByte(destPtr, pixelOffset + 2, alpha); // B
+        }
+    }
+
+    byte[] buf = pb.SaveToBuffer("png");
+
+    ZipArchiveEntry layerEntry = archive.CreateEntry($"data/layer{i}_mask.png");
+    using Stream layerStream = layerEntry.Open();
+    layerStream.Write(buf, 0, buf.Length);
+}
+
+
+
+
 		}
 	}
 
